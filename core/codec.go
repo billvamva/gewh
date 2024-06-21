@@ -8,19 +8,19 @@ import (
 )
 
 type Codec interface {
-	AddField(ByteField)
+	AddFields(ByteFields)
 	GetFields() ByteFields
 }
 
 type BaseSerialisable interface {
-	Encode(version uint8, clientId uint16, message string)
+	Encode(version uint16, clientId uint16, message string)
 	Decode(binaryData []byte)
 }
 
 type BinaryRepresentation struct {
-	version uint8
+	version uint16
 	clientId uint16
-	message string
+	message []byte
 }
 
 type MessageCodec struct {
@@ -30,7 +30,7 @@ type MessageCodec struct {
 type ByteField struct {
 	Name string
 	DataType reflect.Type
-	Value interface {}
+	Value interface {} //Holds pointer of value
 }
 
 type ByteFields []ByteField
@@ -41,18 +41,17 @@ type Serialisable struct {
 }
 
 // Encode method implementation for Serialisable
-func (s *Serialisable) Encode(version uint8, clientId uint16, message string)  {
+func (s *Serialisable) Encode()  {
 	fields := s.codec.GetFields()
-	if s.buf == nil {
-		s.buf = new(bytes.Buffer)
-	}
+	tempBuf := new(bytes.Buffer)
 	for _, field := range fields {
-		err := binary.Write(s.buf, binary.LittleEndian, field.Value)
+		err := binary.Write(tempBuf, binary.LittleEndian, field.Value)
 		if err != nil {
 			log.Fatalf("Error encoding message %v", err)
 			return 
 		}
 	}
+	s.InsertDataToSerialisableBuffer(tempBuf.Bytes())
 }
 
 // Decode method implementation for Serialisable
@@ -97,15 +96,14 @@ func FormatDecodedFields(decodedFields ByteFields) BinaryRepresentation {
 	binaryRep := BinaryRepresentation{}
 	for _, field := range decodedFields {
 		switch v := field.Value.(type) {
-		case *uint8:
-			// we don't need to encode message length
+		case *uint16:
 			if field.Name == "Version" {
 				binaryRep.version = *v
+			} else if field.Name == "ClientId" {
+				binaryRep.clientId = *v
 			}
-		case *uint16:
-			binaryRep.clientId = *v
 		case []byte:
-			binaryRep.message = string(v)
+			binaryRep.message = v 
 		default:
 			log.Printf("unsupported field type: %v", reflect.TypeOf(field.Value))
 			continue
@@ -114,9 +112,18 @@ func FormatDecodedFields(decodedFields ByteFields) BinaryRepresentation {
 	return binaryRep
 }
 
+func (s *Serialisable) BinaryRepresentationToByteFields(binaryRep *BinaryRepresentation) {
+	messageLength := uint8(len(binaryRep.message))
+	s.codec.AddFields(ByteFields{
+		{"Version", reflect.TypeOf(binaryRep.version), &binaryRep.version},
+		{"ClientId", reflect.TypeOf(binaryRep.clientId), &binaryRep.clientId},
+		{"MessageLength", reflect.TypeOf(uint8(len(binaryRep.message))), &messageLength},
+		{"Message", reflect.TypeOf([]byte(binaryRep.message)), []byte(binaryRep.message)},
+	})
+}
 
-func (c *MessageCodec) AddField(field ByteField) {
-	c.fields = append(c.fields, field)
+func (c *MessageCodec) AddFields(fields ByteFields) {
+	c.fields = fields
 }
 
 func (c *MessageCodec) GetFields() ByteFields {
