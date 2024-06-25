@@ -21,8 +21,18 @@ func NewRequest(id int, message Serialisable, ctx context.Context) *Request {
 	}
 } 
 
+type DataProcessingCallBack interface {
+	modifyDataField([]byte) []byte
+}
+
+type DataProcessingFn func([]byte) []byte 
+
+func (d DataProcessingFn) modifyDataField(field []byte) []byte {
+	return d(field)
+}
+
 // placeholder for actual request processing.
-func (req *Request) Process() {
+func (req *Request) Process(cb DataProcessingFn) {
 	decodedByteFields, err := req.Message.Decode()
 	if err != nil {
 		log.Printf("Could not decode data on request:%v , error: %v",req.Id, err)
@@ -31,7 +41,7 @@ func (req *Request) Process() {
 	decodedBinaryRepresentation := BinaryRepresentation{}
 	decodedBinaryRepresentation.FormatDecodedFields(decodedByteFields)
 	// PlaceHolder for actual processing (forwarding information?)
-	decodedBinaryRepresentation.Data = []byte("Updated Message")
+	decodedBinaryRepresentation.Data = cb(decodedBinaryRepresentation.Data)
 	req.Message.BinaryRepresentationToByteFields(&decodedBinaryRepresentation)
 	req.Message.Encode()	
 }

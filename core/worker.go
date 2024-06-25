@@ -12,7 +12,6 @@ var (
 // single queue message broker, to be expanded
 type RequestQueue chan *Request
 
-
 // worker that interacts with the message broker
 type Worker struct {
 	WorkerPool  chan chan *Request // each worker corresponds to a worker pool that holds request channels
@@ -29,7 +28,7 @@ func NewWorker(workerPool chan chan *Request) Worker {
 }
 
 // registers worker's request channel to the pool and waits for requests or quit signal on the request channel.
-func (w Worker) Start(id int) {
+func (w Worker) Start(id int, fn DataProcessingFn) {
 	go func() {
 		for {
 			// (re)register channel in worker pool (when processing has been performed)
@@ -49,7 +48,7 @@ func (w Worker) Start(id int) {
 							log.Printf("Worker %d: Request %d has a nil buffer", id, req.Id)
 							return // Skip this request and continue with the next one
 						}
-						req.Process()
+						req.Process(fn)
 					}
 				}(req)
 
@@ -66,3 +65,5 @@ func (w Worker) Stop() {
 		w.quit <- true
 	}()
 }
+
+

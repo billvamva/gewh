@@ -146,9 +146,9 @@ func (s *Serialisable) BinaryRepresentationToByteFields(binaryRep *BinaryReprese
 		{"Version", reflect.TypeOf(binaryRep.Version), &binaryRep.Version},
 		{"ClientId", reflect.TypeOf(binaryRep.ClientId), &binaryRep.ClientId},
 		{"TokenLength", reflect.TypeOf(uint8(len(binaryRep.Token))), &tokenLength},
-		{"Token", reflect.TypeOf([]byte(binaryRep.Token)), []byte(binaryRep.Token)},
+		{"Token", reflect.TypeOf(binaryRep.Token), append([]byte(nil), binaryRep.Token...)},
 		{"DataLength", reflect.TypeOf(uint8(len(binaryRep.Data))), &dataLength},
-		{"Data", reflect.TypeOf([]byte(binaryRep.Data)), []byte(binaryRep.Data)},
+		{"Data", reflect.TypeOf(binaryRep.Data), append([]byte(nil), binaryRep.Data...)},
 	})
 }
 
