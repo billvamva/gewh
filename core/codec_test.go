@@ -2,35 +2,43 @@ package core
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"testing"
 )
 
-var dummyBuffer bytes.Buffer = *bytes.NewBuffer([]byte{})
 
 func TestEncodingAndDecoding(t *testing.T) {
 	t.Run("test binary encoding", func(t *testing.T) {
 		version := uint16(1)
 		clientId := uint16(42)
-		message := "Hello, World!"
+		data := "Hello, World!"
+		token := "custom token"
 
-		fields := ByteFields{
-			{"Version", reflect.TypeOf(version), version},
-			{"ClientId", reflect.TypeOf(clientId), clientId},
-			{"MessageLength", reflect.TypeOf(uint8(len(message))), uint8(len(message))},
-			{"Message", reflect.TypeOf([]byte(message)), []byte(message)},
+
+		binaryRep := BinaryRepresentation{
+			version,
+			clientId,
+			[]byte(token),
+			[]byte(data),
 		}
-		testSerialisable := createTestSerialisable(fields)
+		testSerialisable := createTestSerialisable()
+		testSerialisable.BinaryRepresentationToByteFields(&binaryRep) 
 
 		testSerialisable.Encode()
 		want := []byte{
 			0x01, 0x00,                   // Version
 			0x2a, 0x00,                   // ClientId (little-endian)
+			0x0C,                         // TokenLength (12 bytes)
+			0x63, 0x75, 0x73, 0x74, 0x6f, // Token "custom token"
+			0x6d, 0x20, 0x74, 0x6f,
+			0x6b, 0x65, 0x6e,
 			0x0d,                         // MessageLength
 			0x48, 0x65, 0x6c, 0x6c, 0x6f, // Message "Hello, World!"
 			0x2c, 0x20, 0x57, 0x6f,
 			0x72, 0x6c, 0x64, 0x21,
 		}
+	
 
 		got := testSerialisable.buf.Bytes()
 
@@ -44,6 +52,10 @@ func TestEncodingAndDecoding(t *testing.T) {
 		encodedData := []byte{
 			0x01, 0x00,                   // Version
 			0x2a, 0x00,                   // ClientId (little-endian)
+			0x0C,                         // TokenLength (12 bytes)
+			0x63, 0x75, 0x73, 0x74, 0x6f, // Token "custom token"
+			0x6d, 0x20, 0x74, 0x6f,
+			0x6b, 0x65, 0x6e,
 			0x0d,                         // MessageLength
 			0x48, 0x65, 0x6c, 0x6c, 0x6f, // Message "Hello, World!"
 			0x2c, 0x20, 0x57, 0x6f,
@@ -53,15 +65,16 @@ func TestEncodingAndDecoding(t *testing.T) {
 		version := uint16(1)
 		clientId := uint16(42)
 		message := "Hello, World!"
+		token := "custom token"
 
-		expectedFields := ByteFields{
-			{"Version", reflect.TypeOf(version), new(uint16)},
-			{"ClientId", reflect.TypeOf(clientId), new(uint16)},
-			{"MessageLength", reflect.TypeOf(uint8(len(message))), new(uint8)},
-			{"Message", reflect.TypeOf([]byte(message)), []byte{}},
+		gotValues := BinaryRepresentation{
+			*new(uint16),
+			*new(uint16),
+			[]byte{},
+			[]byte{},
 		}
-
-		testSerialisable := createTestSerialisable(expectedFields)
+		testSerialisable := createTestSerialisable()
+		testSerialisable.BinaryRepresentationToByteFields(&gotValues) 
 
 		testSerialisable.InsertDataToSerialisableBuffer(encodedData)
 
@@ -72,61 +85,96 @@ func TestEncodingAndDecoding(t *testing.T) {
 
 		// Expected values
 		expectedValues := BinaryRepresentation{
-			version:  version,
-			clientId: clientId,
-			message:  []byte(message),
+			Version:  version,
+			ClientId: clientId,
+			Token: []byte(token),
+			Data:  []byte(message),
 		}
 
-		gotValues := FormatDecodedFields(decodedFields)
+		gotValues.FormatDecodedFields(decodedFields)
 
 		if !reflect.DeepEqual(gotValues, expectedValues) {
 			t.Errorf("decoded field mismatch: got %v, want %v", gotValues, expectedValues)
 		}
 	})
 
-	t.Run("test binary decoding with incorrect type", func(t *testing.T) {
-		// Given encoded binary data with incorrect types
+	t.Run("test json marshaling", func(t *testing.T) {
+		// Given encoded binary data
 		encodedData := []byte{
-			0x01, 0x00,                   // Version (should be uint8)
-			0x2a, 0x00,                   // ClientId (should be uint16)
-			0x0d,                         // MessageLength (should be uint8)
-			0x48, 0x65, 0x6c, 0x6c, 0x6f, // Message "Hello, World!" (should be []byte)
+			0x01, 0x00,                   // Version
+			0x2a, 0x00,                   // ClientId (little-endian)
+			0x0C,                         // TokenLength (12 bytes)
+			0x63, 0x75, 0x73, 0x74, 0x6f, // Token "custom token"
+			0x6d, 0x20, 0x74, 0x6f,
+			0x6b, 0x65, 0x6e,
+			0x0d,                         // MessageLength
+			0x48, 0x65, 0x6c, 0x6c, 0x6f, // Message "Hello, World!"
 			0x2c, 0x20, 0x57, 0x6f,
 			0x72, 0x6c, 0x64, 0x21,
 		}
 
-		// Define fields with incorrect types
-		version := uint16(1)    // Incorrect type: should be uint8
-		clientId := uint32(42)  // Incorrect type: should be uint16
-		message := []uint8{72, 101, 108, 108, 111, 44, 32, 87, 111, 114, 108, 100, 33} // Correct type: just for testing
-
-		incorrectFields := ByteFields{
-			{"Version", reflect.TypeOf(version), new(uint32)},
-			{"ClientId", reflect.TypeOf(clientId), new(uint32)},
-			{"MessageLength", reflect.TypeOf(uint8(len(message))), new(uint8)},
-			{"Message", reflect.TypeOf([]byte(message)), make([]byte, len(message))},
+		gotValues := BinaryRepresentation{
+			*new(uint16),
+			*new(uint16),
+			[]byte{},
+			[]byte{},
 		}
-
-		testSerialisable := createTestSerialisable(incorrectFields)
+		testSerialisable := createTestSerialisable()
+		testSerialisable.BinaryRepresentationToByteFields(&gotValues) 
 
 		testSerialisable.InsertDataToSerialisableBuffer(encodedData)
 
-		_, err := testSerialisable.Decode()
-		if err == nil {
-			t.Fatalf("expected decoding to fail due to incorrect types, but it succeeded")
-		} else {
-			t.Logf("decoding failed as expected: %v", err)
+		decodedFields, err := testSerialisable.Decode()
+		if err != nil {
+			t.Fatalf("decoding failed: %v", err)
+		}
+
+		token := encodeStringToBase64([]byte("custom token"))
+		data := encodeStringToBase64([]byte("Hello, World!"))
+
+		jsonString := fmt.Sprintf(`{"version":1,"clientId":42,"token":%s,"data":%s}`, token, data)
+		// Expected values
+		expectedJson := []byte(
+			jsonString,
+		)
+
+		gotValues.FormatDecodedFields(decodedFields)
+		gotJson := gotValues.MarshalToJson()
+
+		if  bytes.Equal(gotJson, expectedJson){
+			t.Errorf("json mismatch: got %v, want %v", string(gotJson), string(expectedJson))
+		}
+	})
+	t.Run("test json unmarshaling", func(t *testing.T) {
+		// Given encoded binary data
+		token := encodeStringToBase64([]byte("custom token"))
+		data := encodeStringToBase64([]byte("Hello, World!"))
+
+		inputJsonString := fmt.Sprintf(`{"version":1,"clientId":42,"token":"%s","data":"%s"}`, token, data)
+
+		gotValues := BinaryRepresentation{
+			*new(uint16),
+			*new(uint16),
+			[]byte{},
+			[]byte{},
+		}
+
+		version := uint16(1)
+		clientId := uint16(42)
+		message := "Hello, World!"
+		expectedToken := "custom token"
+
+		expectedValues := BinaryRepresentation{
+			Version:  version,
+			ClientId: clientId,
+			Token: []byte(expectedToken),
+			Data:  []byte(message),
+		} 
+
+		gotValues.UnmarshalJson([]byte(inputJsonString))
+		if  !reflect.DeepEqual(gotValues, expectedValues){
+			t.Errorf("binary rep struct mismatch: got %v, want %v", gotValues, expectedValues)
 		}
 	})
 }
 
-func createTestSerialisable(fields ByteFields) Serialisable {
-	messageCodec := MessageCodec{fields}
-
-	testSerialisable := Serialisable{
-		&dummyBuffer,
-		&messageCodec,
-	}
-
-	return testSerialisable
-}

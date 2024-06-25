@@ -3,8 +3,11 @@ package core
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
+	"errors"
 	"log"
 	"reflect"
+	"strings"
 )
 
 type Codec interface {
@@ -18,9 +21,10 @@ type BaseSerialisable interface {
 }
 
 type BinaryRepresentation struct {
-	version uint16
-	clientId uint16
-	message []byte
+	Version uint16 `json:"version"`
+	ClientId uint16 `json:"clientId"`
+	Token []byte `json:"token"`
+	Data []byte `json:"data"`
 }
 
 type MessageCodec struct {
@@ -62,25 +66,49 @@ func (s *Serialisable) Decode() (ByteFields, error) {
 	fields := s.codec.GetFields()
 
 	for i := range fields {
-		if fields[i].Name != "Message" {
-			// Read values into pointers
-			err := binary.Read(s.buf, binary.LittleEndian, fields[i].Value)
+		field := &fields[i]
+		switch field.Name {
+		case "Token", "Data":
+			length, err := getLengthForDynamicSizedField(fields, field.Name)
+			if err != nil {
+				log.Fatalf("Error in Decoding: %v", err)
+			}
+			s.readDataFromDynamicSizedField(field, length)
+		default:
+			// Non-byte arrays: Read values into pointers
+			err := binary.Read(s.buf, binary.LittleEndian, field.Value)
 			if err != nil {
 				return nil, err
 			}
 		}
 	}
 
-	// Read the message based on MessageLength
-	messageLength := *(fields[2].Value.(*uint8))
-	message := make([]byte, messageLength)
-	err := binary.Read(s.buf, binary.LittleEndian, &message)
-	if err != nil {
-		return nil, err
-	}
-	fields[3].Value = message
 
 	return fields, nil
+}
+
+func getLengthForDynamicSizedField(fields ByteFields, fieldName string) (uint8, error) {
+	var length uint8
+	lengthKey := fieldName + "Length"
+	for _, field := range fields {
+		if strings.Compare(field.Name, lengthKey) == 0 {
+			length =  *((field).Value.(*uint8))
+		}
+	}
+	if length == 0 {
+		return 0,errors.New("invalid key for dynamic shaped field")
+	}
+	return length, nil
+}
+
+func (s *Serialisable) readDataFromDynamicSizedField(field *ByteField, fieldSize uint8) error {
+	message := make([]byte, fieldSize)
+	err := binary.Read(s.buf, binary.LittleEndian, &message)
+	if err != nil {
+		return err
+	}
+	field.Value = message
+	return nil
 }
 
 func (s *Serialisable) InsertDataToSerialisableBuffer(binaryData []byte) {
@@ -92,34 +120,63 @@ func (s *Serialisable) InsertDataToSerialisableBuffer(binaryData []byte) {
 	}	
 }
 
-func FormatDecodedFields(decodedFields ByteFields) BinaryRepresentation {
-	binaryRep := BinaryRepresentation{}
+func (s *Serialisable) BinaryRepresentationToByteFields(binaryRep *BinaryRepresentation) {
+	dataLength := uint8(len(binaryRep.Data))
+	tokenLength := uint8(len(binaryRep.Token))
+	s.codec.AddFields(ByteFields{
+		{"Version", reflect.TypeOf(binaryRep.Version), &binaryRep.Version},
+		{"ClientId", reflect.TypeOf(binaryRep.ClientId), &binaryRep.ClientId},
+		{"TokenLength", reflect.TypeOf(uint8(len(binaryRep.Token))), &tokenLength},
+		{"Token", reflect.TypeOf([]byte(binaryRep.Token)), []byte(binaryRep.Token)},
+		{"DataLength", reflect.TypeOf(uint8(len(binaryRep.Data))), &dataLength},
+		{"Data", reflect.TypeOf([]byte(binaryRep.Data)), []byte(binaryRep.Data)},
+	})
+}
+
+func (b *BinaryRepresentation) FormatDecodedFields(decodedFields ByteFields) {
 	for _, field := range decodedFields {
 		switch v := field.Value.(type) {
+		case *uint8:
+			continue
 		case *uint16:
-			if field.Name == "Version" {
-				binaryRep.version = *v
-			} else if field.Name == "ClientId" {
-				binaryRep.clientId = *v
+			switch field.Name {
+			case "Version":
+				b.Version = *v
+			case "ClientId":
+				b.ClientId = *v
 			}
 		case []byte:
-			binaryRep.message = v 
+			switch field.Name {
+			case "Data":
+				b.Data = v 
+			case "Token":
+				b.Token = v
+			default:
+				log.Printf("unsupported field name: %v", field.Name)
+			}
 		default:
 			log.Printf("unsupported field type: %v", reflect.TypeOf(field.Value))
 			continue
 		}
 	}
-	return binaryRep
 }
 
-func (s *Serialisable) BinaryRepresentationToByteFields(binaryRep *BinaryRepresentation) {
-	messageLength := uint8(len(binaryRep.message))
-	s.codec.AddFields(ByteFields{
-		{"Version", reflect.TypeOf(binaryRep.version), &binaryRep.version},
-		{"ClientId", reflect.TypeOf(binaryRep.clientId), &binaryRep.clientId},
-		{"MessageLength", reflect.TypeOf(uint8(len(binaryRep.message))), &messageLength},
-		{"Message", reflect.TypeOf([]byte(binaryRep.message)), []byte(binaryRep.message)},
-	})
+func (b BinaryRepresentation) MarshalToJson() []byte{
+	jsonData, err := json.Marshal(b)
+
+	if err != nil {
+		log.Println("Error encoding JSON:", err)
+		return nil
+	}
+	return jsonData
+}
+
+func (b *BinaryRepresentation) UnmarshalJson(data []byte){
+	err := json.Unmarshal(data, b)
+	if err != nil {
+		log.Println("Error decoding JSON:", err)
+		return
+	}
 }
 
 func (c *MessageCodec) AddFields(fields ByteFields) {
