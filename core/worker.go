@@ -9,16 +9,18 @@ var (
 	MAX_WORKER = 5
 )
 
-
+// single queue message broker, to be expanded
 type RequestQueue chan *Request
 
 
+// worker that interacts with the message broker
 type Worker struct {
-	WorkerPool  chan chan *Request
-	RequestChannel  chan *Request
-	quit    	chan bool
+	WorkerPool  chan chan *Request // each worker corresponds to a worker pool that holds request channels
+	RequestChannel  chan *Request // worker's request channel
+	quit    	chan bool // signal to quit the worker
 }
 
+// creates new worker
 func NewWorker(workerPool chan chan *Request) Worker {
 	return Worker{
 		WorkerPool: workerPool,
@@ -26,6 +28,7 @@ func NewWorker(workerPool chan chan *Request) Worker {
 		quit:       make(chan bool)}
 }
 
+// registers worker's request channel to the pool and waits for requests or quit signal on the request channel.
 func (w Worker) Start(id int) {
 	go func() {
 		for {
