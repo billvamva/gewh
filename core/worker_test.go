@@ -157,7 +157,8 @@ func TestRequestAndQueueHandling(t *testing.T) {
 		return field
 		})
 
-		dispatcher := NewDispatcher(MAX_WORKER, RequestQueue)
+		dispatcher := NewDispatcher(MAX_WORKER)
+		dispatcher.AddQueue(RequestQueue)
 		dispatcher.Run(cb)
 		time.Sleep(time.Second * 2)
 

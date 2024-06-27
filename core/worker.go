@@ -9,9 +9,6 @@ var (
 	MAX_WORKER = 5
 )
 
-// single queue message broker, to be expanded
-type RequestQueue chan *Request
-
 // worker that interacts with the message broker
 type Worker struct {
 	WorkerPool  chan chan *Request // each worker corresponds to a worker pool that holds request channels
