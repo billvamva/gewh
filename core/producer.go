@@ -7,18 +7,15 @@ import (
 	"time"
 )
 
-type subId uint64
-
 const (
 	defaultBroadcastTimeout = time.Minute
 )
 
-// manages dispatcher subscriptions and broadcasting requests 
+// manages dispatcher subscriptions and broadcasting requests
 type Producer struct {
 	sync.RWMutex
-	subs 	map[subId]*Dispatcher
-	nextID subId
-	doneListener chan subId
+	subs             map[uint64]*Dispatcher
+	doneListener     chan uint64
 	broadcastTimeout time.Duration
 }
 
@@ -31,10 +28,10 @@ func WithBroadcastTimeout[T any](timeout time.Duration) ProducerOpt {
 }
 
 // creates new producer with options
-func NewProducer (opts ...ProducerOpt) *Producer {
+func NewProducer(opts ...ProducerOpt) *Producer {
 	producer := &Producer{
-		subs: make(map[subId]*Dispatcher),
-		doneListener: make(chan subId, 100),
+		subs:             make(map[uint64]*Dispatcher),
+		doneListener:     make(chan uint64, 100),
 		broadcastTimeout: defaultBroadcastTimeout,
 	}
 	for _, opt := range opts {
@@ -66,26 +63,26 @@ func (ep *Producer) Start(ctx context.Context) {
 func (ep *Producer) Subscribe(dp *Dispatcher) {
 	ep.Lock()
 	defer ep.Unlock()
-	id := ep.nextID
-	ep.subs[id] = dp
+	ep.subs[dp.id] = dp
 }
 
-
-// Producer broadcasts requests to all listening dispatchers
 func (ep *Producer) Broadcast(ctx context.Context, req *Request) {
 	ep.RLock()
 	defer ep.RUnlock()
 	var wg sync.WaitGroup
 	for _, sub := range ep.subs {
 		wg.Add(1)
-		go func (listener *Dispatcher, w *sync.WaitGroup) {
+		go func(listener *Dispatcher, w *sync.WaitGroup) {
 			defer w.Done()
 			select {
 			case listener.queue <- req:
-			case <- time.After(ep.broadcastTimeout):
-				fmt.Print("Broadcast to listener timed out.")	
+				fmt.Println("Request sent to queue")
+			case <-time.After(ep.broadcastTimeout):
+				fmt.Println("Broadcast to listener timed out.")
 			case <-ctx.Done():
+				fmt.Println("Context cancelled")
 			}
-		} (sub, &wg)
+		}(sub, &wg)
 	}
+	wg.Wait() // Wait for all goroutines to complete
 }

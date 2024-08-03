@@ -12,29 +12,27 @@ import (
 
 var wg sync.WaitGroup
 
-
-
 func TestRequestAndQueueHandling(t *testing.T) {
 	t.Run("test worker to process reqs from queue", func(t *testing.T) {
 		requests := []BinaryRepresentation{
-			{Version: uint16(1), ClientId: uint16(1),Token: []byte("custom token"), Data:[]byte("1. Hello, Worker!"),},
-			{Version: uint16(1), ClientId: uint16(2),Token: []byte("custom token"), Data:[]byte("2. Hello, Worker!"),},
-			{Version: uint16(1), ClientId: uint16(3),Token: []byte("custom token"), Data:[]byte("3. Hello, Worker!"),},
+			{Version: uint16(1), ClientId: uint16(1), Token: []byte("custom token"), Data: []byte("1. Hello, Worker!")},
+			{Version: uint16(1), ClientId: uint16(2), Token: []byte("custom token"), Data: []byte("2. Hello, Worker!")},
+			{Version: uint16(1), ClientId: uint16(3), Token: []byte("custom token"), Data: []byte("3. Hello, Worker!")},
 		}
 		ctx := context.TODO()
 		reqStore := make([]*Request, len(requests))
 		RequestQueue := make(chan *Request, MAX_QUEUE)
 		for i, reqData := range requests {
 			req := createAndFormatTestRequest(reqData, i, ctx)
-			reqStore[i] = req 
+			reqStore[i] = req
 			RequestQueue <- reqStore[i]
 		}
 
 		// Define a DataProcessingFn that appends a string to the field
 		cb := DataProcessingFn(func(field []byte) []byte {
-		additionalData := []byte(" I have been added in processing!")
-		field = append(field, additionalData...)
-		return field
+			additionalData := []byte(" I have been added in processing!")
+			field = append(field, additionalData...)
+			return field
 		})
 
 		pool := make(chan chan *Request, 1)
@@ -50,14 +48,14 @@ func TestRequestAndQueueHandling(t *testing.T) {
 					go func(req *Request) {
 						// try to obtain a worker job channel that is available.
 						// this will block until a worker is idle
-						reqChannel := <- worker.WorkerPool
+						reqChannel := <-worker.WorkerPool
 
 						// dispatch the job to the worker job channel
 						reqChannel <- req
 						wg.Done()
 					}(req)
 				default:
-					 return
+					return
 				}
 			}
 		}()
@@ -66,20 +64,20 @@ func TestRequestAndQueueHandling(t *testing.T) {
 		worker.Stop()
 
 		for i, req := range reqStore {
-			buffer :=  bytes.Buffer{}
+			buffer := bytes.Buffer{}
 			expectedString := fmt.Sprintf("%d. Hello, Worker! I have been added in processing!", i+1)
 			buffer.WriteString(expectedString)
 			got := string(getBinaryRepresentationFromSerialisable(req.Message).Data)
 			want := buffer.String()
 			if !strings.EqualFold(got, want) {
-				t.Errorf("Expected %s, got %s",want,got)
+				t.Errorf("Expected %s, got %s", want, got)
 			}
 		}
 	})
 
 	t.Run("test worker to process req from queue and cancel req before processing", func(t *testing.T) {
 		requests := []BinaryRepresentation{
-			{Version: uint16(1), ClientId: uint16(1),Token: []byte("custom token"), Data:[]byte("Hello, Worker!"),},
+			{Version: uint16(1), ClientId: uint16(1), Token: []byte("custom token"), Data: []byte("Hello, Worker!")},
 		}
 		parentCtx := context.Background()
 		ctx, cancel := context.WithCancel(parentCtx)
@@ -92,9 +90,9 @@ func TestRequestAndQueueHandling(t *testing.T) {
 		}
 		// Define a DataProcessingFn that appends a string to the field
 		cb := DataProcessingFn(func(field []byte) []byte {
-		additionalData := []byte(" I have been added in processing!")
-		field = append(field, additionalData...)
-		return field
+			additionalData := []byte(" I have been added in processing!")
+			field = append(field, additionalData...)
+			return field
 		})
 
 		pool := make(chan chan *Request, 1)
@@ -110,7 +108,7 @@ func TestRequestAndQueueHandling(t *testing.T) {
 					go func(req *Request) {
 						// try to obtain a worker job channel that is available.
 						// this will block until a worker is idle
-						reqChannel := <- worker.WorkerPool
+						reqChannel := <-worker.WorkerPool
 
 						// dispatch the job to the worker job channel
 						reqChannel <- req
@@ -118,7 +116,7 @@ func TestRequestAndQueueHandling(t *testing.T) {
 						wg.Done()
 					}(req)
 				default:
-					 return
+					return
 				}
 			}
 		}()
@@ -127,21 +125,21 @@ func TestRequestAndQueueHandling(t *testing.T) {
 		worker.Stop()
 
 		for _, req := range reqStore {
-			buffer :=  bytes.Buffer{}
+			buffer := bytes.Buffer{}
 			buffer.WriteString("Hello, Worker!")
 			got := string(getBinaryRepresentationFromSerialisable(req.Message).Data)
 			want := buffer.String()
 			if !strings.EqualFold(got, want) {
-				t.Errorf("Expected %s, got %s",want,got)
+				t.Errorf("Expected %s, got %s", want, got)
 			}
 		}
 	})
 
 	t.Run("test worker with dispatcher", func(t *testing.T) {
 		requests := []BinaryRepresentation{
-			{Version: uint16(1), ClientId: uint16(1),Token: []byte("custom token"), Data:[]byte("1. Hello, Worker!"),},
-			{Version: uint16(1), ClientId: uint16(2),Token: []byte("custom token"), Data:[]byte("2. Hello, Worker!"),},
-			{Version: uint16(1), ClientId: uint16(3),Token: []byte("custom token"), Data:[]byte("3. Hello, Worker!"),},
+			{Version: uint16(1), ClientId: uint16(1), Token: []byte("custom token"), Data: []byte("1. Hello, Worker!")},
+			{Version: uint16(1), ClientId: uint16(2), Token: []byte("custom token"), Data: []byte("2. Hello, Worker!")},
+			{Version: uint16(1), ClientId: uint16(3), Token: []byte("custom token"), Data: []byte("3. Hello, Worker!")},
 		}
 		ctx := context.TODO()
 		reqStore := make([]*Request, len(requests))
@@ -152,30 +150,27 @@ func TestRequestAndQueueHandling(t *testing.T) {
 		}
 		// Define a DataProcessingFn that appends a string to the field
 		cb := DataProcessingFn(func(field []byte) []byte {
-		additionalData := []byte(" I have been added in processing!")
-		field = append(field, additionalData...)
-		return field
+			additionalData := []byte(" I have been added in processing!")
+			field = append(field, additionalData...)
+			return field
 		})
 
-		dispatcher := NewDispatcher(MAX_WORKER)
+		dispatcher := NewDispatcher(1, MAX_WORKER)
 		dispatcher.AddQueue(RequestQueue)
 		dispatcher.Run(cb)
 		time.Sleep(time.Second * 2)
 
-
 		for i, req := range reqStore {
-			buffer :=  bytes.Buffer{}
+			buffer := bytes.Buffer{}
 			expectedString := fmt.Sprintf("%d. Hello, Worker! I have been added in processing!", i+1)
 			buffer.WriteString(expectedString)
 			got := string(getBinaryRepresentationFromSerialisable(req.Message).Data)
 			want := buffer.String()
 			if !strings.EqualFold(got, want) {
-				t.Errorf("Expected %s, got %s",want,got)
+				t.Errorf("Expected %s, got %s", want, got)
 			}
 		}
-
 
 		fmt.Printf("%v", reqStore[1].Message.buf.String())
 	})
 }
-

@@ -5,6 +5,7 @@ type RequestQueue chan *Request
 
 // dispatches requests to available workers - interface with workers
 type Dispatcher struct {
+	id         uint64
 	WorkerPool chan chan *Request // A pool of workers channels that are registered with the dispatcher
 	maxWorkers int                // maxWorker count
 	queue      RequestQueue       // where the dispatcher will get the requests from
@@ -12,9 +13,10 @@ type Dispatcher struct {
 }
 
 // creates NewDispatcher
-func NewDispatcher(maxWorkers int) *Dispatcher {
+func NewDispatcher(id uint64, maxWorkers int) *Dispatcher {
 	pool := make(chan chan *Request, maxWorkers)
-	return &Dispatcher{WorkerPool: pool, maxWorkers: maxWorkers}
+
+	return &Dispatcher{id: id, WorkerPool: pool, maxWorkers: maxWorkers}
 }
 
 func (d *Dispatcher) AddQueue(queue RequestQueue) {
