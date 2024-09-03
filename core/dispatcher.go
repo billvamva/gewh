@@ -24,10 +24,10 @@ func (d *Dispatcher) AddQueue(queue RequestQueue) {
 }
 
 // starting n number of workers
-func (d *Dispatcher) Run(fn DataProcessingFn) {
+func (d *Dispatcher) Run(p DataProcessor) {
 	for i := 0; i < d.maxWorkers; i++ {
 		worker := NewWorker(d.WorkerPool)
-		worker.Start(i, fn)
+		worker.Start(i, p)
 	}
 
 	go d.dispatch()

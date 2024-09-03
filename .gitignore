@@ -22,4 +22,5 @@ go.work
 go.work.sum
 
 .history/
-.DS_store
+*.DS_store
+data/

@@ -4,89 +4,111 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"log"
 	"reflect"
 	"strings"
 )
 
-// Defines the contract for managing fields in a codec.
+// Defines the contract for managing fields in a Codec.
 type Codec interface {
-	AddFields(ByteFields) // Adds Fields for the specific codec
-	GetFields() ByteFields // Gets all Fields for the specific codec
+	AddFields(fields ByteFields) // Adds Fields for the specific Codec
+	GetFields() ByteFields       // Gets all Fields for the specific Codec
 }
 
 // Codec for base messages we will be handling
 type MessageCodec struct {
-	fields ByteFields // bytefields configured for the specific codec
+	fields ByteFields // bytefields configured for the specific Codec
 }
 
-// add fields to codec
+// add fields to Codec
 func (c *MessageCodec) AddFields(fields ByteFields) {
 	c.fields = fields
 }
 
-// get fields from codec
+// get fields from Codec
 func (c *MessageCodec) GetFields() ByteFields {
 	return c.fields
 }
 
-// data has to be first be transformed to a Bytefield to be encoded and written on the codec
+// data has to be first be transformed to a Bytefield to be encoded and written on the Codec
 type ByteField struct {
-	Name string // name of the field
+	Name     string       // name of the field
 	DataType reflect.Type // data type of the field
-	Value interface {} //Holds pointer of value
+	Value    interface{}  // Holds pointer of value
 }
 
 type ByteFields []ByteField
 
 // Defines methods for encoding and decoding data for a serializable.
 type BaseSerialisable interface {
-	Encode() // Encode data from the codec fields to the buffer 
-	Decode() (ByteFields, error)  // Decode data from buffer to byte fields
+	Encode()                     // Encode data from the Codec fields to the buffer
+	Decode() (ByteFields, error) // Decode data from buffer to byte fields
 }
 
 // anything that can be serialised and deserialised
 type Serialisable struct {
-	buf *bytes.Buffer // holds binary data
-	codec Codec // holds information on how to decode and encode the binary data
+	buf   *bytes.Buffer // holds binary data
+	Codec Codec         // holds information on how to decode and encode the binary data
 }
-// Struct representation of a serialisable's buffer content using its codec. This format is used as an interface with the serialisable.
-type BinaryRepresentation struct {
-	Version uint16 `json:"version"` // version of encoding
-	ClientId uint16 `json:"clientId"` // origin client id
-	Token []byte `json:"token"` // authentication token
-	Data []byte `json:"data"` //  data sent
+
+func NewSerialisable() *Serialisable {
+	return &Serialisable{
+		bytes.NewBuffer([]byte{}),
+		&MessageCodec{},
+	}
+}
+
+// Struct representation of a serialisable's buffer content using its Codec. This format is used as an interface with the serialisable.
+type Payload struct {
+	Version    uint16 `json:"version"`    // version of encoding
+	ClientId   uint16 `json:"clientId"`   // origin client id
+	Identifier []byte `json:"identifier"` // Identifier
+	Data       []byte `json:"data"`       //  data sent
+}
+
+func NewPayload(version uint16, clientId uint16, token []byte, data []byte) *Payload {
+	return &Payload{
+		version,
+		clientId,
+		token,
+		data,
+	}
 }
 
 // Encode method implementation for Serialisable
-func (s *Serialisable) Encode()  {
-	fields := s.codec.GetFields()
+func (s *Serialisable) Encode() error {
+	fields := s.Codec.GetFields()
 	tempBuf := new(bytes.Buffer)
 	for _, field := range fields {
 		err := binary.Write(tempBuf, binary.LittleEndian, field.Value)
 		if err != nil {
 			log.Fatalf("Error encoding message %v", err)
-			return 
+			return err
 		}
 	}
 	s.InsertDataToSerialisableBuffer(tempBuf.Bytes())
+	return nil
+}
+
+func (s *Serialisable) GetBufString() string {
+	return s.buf.String()
 }
 
 // Decode method implementation for Serialisable
 func (s *Serialisable) Decode() (ByteFields, error) {
 	if s.buf == nil {
 		log.Fatal("Insert Data into buffer of serialisable to decode.")
-	}	
-	fields := s.codec.GetFields()
+	}
+	fields := s.Codec.GetFields()
 
 	for i := range fields {
 		field := &fields[i]
 		switch field.Name {
-		case "Token", "Data":
+		case "Identifier", "Data":
 			length, err := getLengthForDynamicSizedField(fields, field.Name)
 			if err != nil {
-				log.Fatalf("Error in Decoding: %v", err)
+				log.Printf("Error in Decoding: %v, field value %v", err, field.Value)
 			}
 			s.readDataFromDynamicSizedField(field, length)
 		default:
@@ -98,27 +120,26 @@ func (s *Serialisable) Decode() (ByteFields, error) {
 		}
 	}
 
-
 	return fields, nil
 }
 
 // get length for a dynamic sized field
-func getLengthForDynamicSizedField(fields ByteFields, fieldName string) (uint8, error) {
-	var length uint8
+func getLengthForDynamicSizedField(fields ByteFields, fieldName string) (uint32, error) {
+	var length uint32
 	lengthKey := fieldName + "Length"
 	for _, field := range fields {
 		if strings.Compare(field.Name, lengthKey) == 0 {
-			length =  *((field).Value.(*uint8))
+			length = *((field).Value.(*uint32))
 		}
 	}
 	if length == 0 {
-		return 0,errors.New("invalid key for dynamic shaped field")
+		return 0, fmt.Errorf("invalid key for dynamic shaped field, %s", fieldName)
 	}
 	return length, nil
 }
 
 // use length to read data from dynamic sized field
-func (s *Serialisable) readDataFromDynamicSizedField(field *ByteField, fieldSize uint8) error {
+func (s *Serialisable) readDataFromDynamicSizedField(field *ByteField, fieldSize uint32) error {
 	message := make([]byte, fieldSize)
 	err := binary.Read(s.buf, binary.LittleEndian, &message)
 	if err != nil {
@@ -135,28 +156,30 @@ func (s *Serialisable) InsertDataToSerialisableBuffer(binaryData []byte) {
 	} else {
 		s.buf.Reset()
 		s.buf.Write(binaryData)
-	}	
+	}
 }
 
-// transform the binary struct represenatation into fields and then add it to the codec of the serialisable
-func (s *Serialisable) BinaryRepresentationToByteFields(binaryRep *BinaryRepresentation) {
-	dataLength := uint8(len(binaryRep.Data))
-	tokenLength := uint8(len(binaryRep.Token))
-	s.codec.AddFields(ByteFields{
-		{"Version", reflect.TypeOf(binaryRep.Version), &binaryRep.Version},
-		{"ClientId", reflect.TypeOf(binaryRep.ClientId), &binaryRep.ClientId},
-		{"TokenLength", reflect.TypeOf(uint8(len(binaryRep.Token))), &tokenLength},
-		{"Token", reflect.TypeOf(binaryRep.Token), append([]byte(nil), binaryRep.Token...)},
-		{"DataLength", reflect.TypeOf(uint8(len(binaryRep.Data))), &dataLength},
-		{"Data", reflect.TypeOf(binaryRep.Data), append([]byte(nil), binaryRep.Data...)},
-	})
+// transform the binary struct represenatation into fields and then add it to the Codec of the serialisable
+// ToFields converts a Payload to a slice of Fields
+func (p *Payload) ToFields() ByteFields {
+	tokenLength := uint32(len(p.Identifier))
+	dataLength := uint32(len(p.Data))
+
+	return ByteFields{
+		{"Version", reflect.TypeOf(p.Version), &p.Version},
+		{"ClientId", reflect.TypeOf(p.ClientId), &p.ClientId},
+		{"IdentifierLength", reflect.TypeOf(uint32(0)), &tokenLength},
+		{"Identifier", reflect.TypeOf(p.Identifier), &p.Identifier},
+		{"DataLength", reflect.TypeOf(uint32(0)), &dataLength},
+		{"Data", reflect.TypeOf(p.Data), &p.Data},
+	}
 }
 
 // transform byte fields into binary representation for processing
-func (b *BinaryRepresentation) FormatDecodedFields(decodedFields ByteFields) {
-	for _, field := range decodedFields {
+func (b *Payload) FromFields(fields ByteFields) {
+	for _, field := range fields {
 		switch v := field.Value.(type) {
-		case *uint8:
+		case *uint32:
 			continue
 		case *uint16:
 			switch field.Name {
@@ -168,9 +191,9 @@ func (b *BinaryRepresentation) FormatDecodedFields(decodedFields ByteFields) {
 		case []byte:
 			switch field.Name {
 			case "Data":
-				b.Data = v 
-			case "Token":
-				b.Token = v
+				b.Data = v
+			case "Identifier":
+				b.Identifier = v
 			default:
 				log.Printf("unsupported field name: %v", field.Name)
 			}
@@ -182,9 +205,8 @@ func (b *BinaryRepresentation) FormatDecodedFields(decodedFields ByteFields) {
 }
 
 // transform binary representation into json
-func (b BinaryRepresentation) MarshalToJson() []byte{
+func (b Payload) MarshalToJson() []byte {
 	jsonData, err := json.Marshal(b)
-
 	if err != nil {
 		log.Println("Error encoding JSON:", err)
 		return nil
@@ -193,7 +215,7 @@ func (b BinaryRepresentation) MarshalToJson() []byte{
 }
 
 // unmarshal json to binary representation
-func (b *BinaryRepresentation) UnmarshalJson(data []byte){
+func (b *Payload) UnmarshalJson(data []byte) {
 	err := json.Unmarshal(data, b)
 	if err != nil {
 		log.Println("Error decoding JSON:", err)

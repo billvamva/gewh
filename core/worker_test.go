@@ -13,23 +13,23 @@ import (
 var wg sync.WaitGroup
 
 func TestRequestAndQueueHandling(t *testing.T) {
-	t.Run("test worker to process reqs from queue", func(t *testing.T) {
-		requests := []BinaryRepresentation{
-			{Version: uint16(1), ClientId: uint16(1), Token: []byte("custom token"), Data: []byte("1. Hello, Worker!")},
-			{Version: uint16(1), ClientId: uint16(2), Token: []byte("custom token"), Data: []byte("2. Hello, Worker!")},
-			{Version: uint16(1), ClientId: uint16(3), Token: []byte("custom token"), Data: []byte("3. Hello, Worker!")},
+	t.Run("test worker to process reqs from queue with custom processing task", func(t *testing.T) {
+		requests := []Payload{
+			{Version: uint16(1), ClientId: uint16(1), Identifier: []byte("origin"), Data: []byte("1. Hello, Worker!")},
+			{Version: uint16(1), ClientId: uint16(2), Identifier: []byte("origin"), Data: []byte("2. Hello, Worker!")},
+			{Version: uint16(1), ClientId: uint16(3), Identifier: []byte("origin"), Data: []byte("3. Hello, Worker!")},
 		}
 		ctx := context.TODO()
 		reqStore := make([]*Request, len(requests))
 		RequestQueue := make(chan *Request, MAX_QUEUE)
 		for i, reqData := range requests {
-			req := createAndFormatTestRequest(reqData, i, ctx)
+			req := createAndFormatTestRequest(&reqData, i, ctx)
 			reqStore[i] = req
 			RequestQueue <- reqStore[i]
 		}
 
 		// Define a DataProcessingFn that appends a string to the field
-		cb := DataProcessingFn(func(field []byte) []byte {
+		cb := MockDataProcessingFn(func(field []byte) []byte {
 			additionalData := []byte(" I have been added in processing!")
 			field = append(field, additionalData...)
 			return field
@@ -67,7 +67,7 @@ func TestRequestAndQueueHandling(t *testing.T) {
 			buffer := bytes.Buffer{}
 			expectedString := fmt.Sprintf("%d. Hello, Worker! I have been added in processing!", i+1)
 			buffer.WriteString(expectedString)
-			got := string(getBinaryRepresentationFromSerialisable(req.Message).Data)
+			got := string(getPayloadFromSerialisable(req.Message).Data)
 			want := buffer.String()
 			if !strings.EqualFold(got, want) {
 				t.Errorf("Expected %s, got %s", want, got)
@@ -76,20 +76,20 @@ func TestRequestAndQueueHandling(t *testing.T) {
 	})
 
 	t.Run("test worker to process req from queue and cancel req before processing", func(t *testing.T) {
-		requests := []BinaryRepresentation{
-			{Version: uint16(1), ClientId: uint16(1), Token: []byte("custom token"), Data: []byte("Hello, Worker!")},
+		requests := []Payload{
+			{Version: uint16(1), ClientId: uint16(1), Identifier: []byte("origin"), Data: []byte("Hello, Worker!")},
 		}
 		parentCtx := context.Background()
 		ctx, cancel := context.WithCancel(parentCtx)
 		reqStore := make([]*Request, len(requests))
 		RequestQueue := make(chan *Request, MAX_QUEUE)
 		for i, reqData := range requests {
-			req := createAndFormatTestRequest(reqData, i, ctx)
+			req := createAndFormatTestRequest(&reqData, i, ctx)
 			reqStore[i] = req
 			RequestQueue <- req
 		}
 		// Define a DataProcessingFn that appends a string to the field
-		cb := DataProcessingFn(func(field []byte) []byte {
+		mockdataProsessing := MockDataProcessingFn(func(field []byte) []byte {
 			additionalData := []byte(" I have been added in processing!")
 			field = append(field, additionalData...)
 			return field
@@ -97,7 +97,7 @@ func TestRequestAndQueueHandling(t *testing.T) {
 
 		pool := make(chan chan *Request, 1)
 		worker := NewWorker(pool)
-		worker.Start(1, cb)
+		worker.Start(1, mockdataProsessing)
 
 		go func() {
 			for {
@@ -127,7 +127,7 @@ func TestRequestAndQueueHandling(t *testing.T) {
 		for _, req := range reqStore {
 			buffer := bytes.Buffer{}
 			buffer.WriteString("Hello, Worker!")
-			got := string(getBinaryRepresentationFromSerialisable(req.Message).Data)
+			got := string(getPayloadFromSerialisable(req.Message).Data)
 			want := buffer.String()
 			if !strings.EqualFold(got, want) {
 				t.Errorf("Expected %s, got %s", want, got)
@@ -136,20 +136,20 @@ func TestRequestAndQueueHandling(t *testing.T) {
 	})
 
 	t.Run("test worker with dispatcher", func(t *testing.T) {
-		requests := []BinaryRepresentation{
-			{Version: uint16(1), ClientId: uint16(1), Token: []byte("custom token"), Data: []byte("1. Hello, Worker!")},
-			{Version: uint16(1), ClientId: uint16(2), Token: []byte("custom token"), Data: []byte("2. Hello, Worker!")},
-			{Version: uint16(1), ClientId: uint16(3), Token: []byte("custom token"), Data: []byte("3. Hello, Worker!")},
+		requests := []Payload{
+			{Version: uint16(1), ClientId: uint16(1), Identifier: []byte("origin"), Data: []byte("1. Hello, Worker!")},
+			{Version: uint16(1), ClientId: uint16(2), Identifier: []byte("origin"), Data: []byte("2. Hello, Worker!")},
+			{Version: uint16(1), ClientId: uint16(3), Identifier: []byte("origin"), Data: []byte("3. Hello, Worker!")},
 		}
 		ctx := context.TODO()
 		reqStore := make([]*Request, len(requests))
 		RequestQueue := make(chan *Request, MAX_QUEUE)
 		for i, reqData := range requests {
-			reqStore[i] = createAndFormatTestRequest(reqData, i, ctx)
+			reqStore[i] = createAndFormatTestRequest(&reqData, i, ctx)
 			RequestQueue <- reqStore[i]
 		}
 		// Define a DataProcessingFn that appends a string to the field
-		cb := DataProcessingFn(func(field []byte) []byte {
+		cb := MockDataProcessingFn(func(field []byte) []byte {
 			additionalData := []byte(" I have been added in processing!")
 			field = append(field, additionalData...)
 			return field
@@ -164,7 +164,7 @@ func TestRequestAndQueueHandling(t *testing.T) {
 			buffer := bytes.Buffer{}
 			expectedString := fmt.Sprintf("%d. Hello, Worker! I have been added in processing!", i+1)
 			buffer.WriteString(expectedString)
-			got := string(getBinaryRepresentationFromSerialisable(req.Message).Data)
+			got := string(getPayloadFromSerialisable(req.Message).Data)
 			want := buffer.String()
 			if !strings.EqualFold(got, want) {
 				t.Errorf("Expected %s, got %s", want, got)
