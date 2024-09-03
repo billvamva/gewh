@@ -1,4 +1,4 @@
-module gewh
+module github.com/billvamva/gewh
 
 go 1.22.2
 
