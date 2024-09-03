@@ -53,6 +53,7 @@ func NewBatchReader(filename string, batchSize int) (*BatchReader, error) {
 	}, nil
 }
 
+// Read into record channel for each batch
 func (br *BatchReader) ReadRecords() (<-chan []Record, <-chan error) {
 	go func() {
 		defer close(br.batchChan)
@@ -82,6 +83,7 @@ func (br *BatchReader) ReadRecords() (<-chan []Record, <-chan error) {
 	return br.batchChan, br.errChan
 }
 
+// Format records of each batch in a request as a string
 func CombineRecords(records []Record) *Batch {
 	var combinedRecords []string
 	for _, record := range records {

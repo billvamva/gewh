@@ -30,7 +30,7 @@ func NewProcessor(mapFunc MapFunc, reduceFunc ReduceFunc) *Processor {
 	}
 }
 
-// adapter
+// adapter for process interface in core for request processing
 func (p *Processor) Process(req *core.Request) error {
 	p.Add(1)
 	var err error
@@ -46,7 +46,7 @@ func (p *Processor) Process(req *core.Request) error {
 	return nil
 }
 
-// processing requests
+// processing raw incoming requests
 func ProcessRawData(req *core.Request, mapFunc MapFunc, reduceFunc ReduceFunc) error {
 	// Steps 1-2: Decode the message and extract payload (unchanged)
 	fields, err := req.Message.Decode()
@@ -69,6 +69,7 @@ func ProcessRawData(req *core.Request, mapFunc MapFunc, reduceFunc ReduceFunc) e
 	return nil
 }
 
+// group map and reduce so they are done in one operation
 func mapReduceOptimized(data *core.Payload, mapFunc MapFunc, reduceFunc ReduceFunc) ([]KeyValue, error) {
 	// Perform mapping
 	kvs := mapFunc(data)
@@ -138,12 +139,14 @@ func AggregateFinalResults(finalReduceFunc ReduceFunc) map[string]Record {
 	return results
 }
 
+// storing results in memory
 func storeBatchResults(batchId int, results []KeyValue) {
 	BatchResultsLock.Lock()
 	defer BatchResultsLock.Unlock()
 	batchResults.Store(batchId, results)
 }
 
+// retrieving all with a thread safe map
 func getAllBatchResults() []KeyValue {
 	var allResults []KeyValue
 	batchResults.Range(func(_, value interface{}) bool {
